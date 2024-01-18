@@ -555,6 +555,24 @@ def _patch_run_datadog_script(script_dir):
         file_handler.truncate()
 
 
+def _patch_create_logs_config_script(script_dir):
+    # Seems like there is a race condition between the
+    # File.exists check and Dir.mkdir call, as a result we get an exception.
+    # Commenting out the Dir.mkdir call, as it is already created as part of
+    # run-datadog.sh script
+    script = os.path.join(script_dir, "scripts", "create_logs_config.rb")
+    pattern = 'Dir.mkdir(logs_config_dir)'
+    with open(script, "r+") as file_handler:
+        lines = file_handler.readlines()
+        file_handler.seek(0)
+        for line in lines:
+            if pattern in line:
+                file_handler.write(f"# {line}")
+            else:
+                file_handler.write(line)
+        file_handler.truncate()
+
+
 def stage(buildpack_path, build_path, cache_path):
     if not is_enabled():
         return
@@ -567,6 +585,9 @@ def stage(buildpack_path, build_path, cache_path):
 
     logging.debug("Patching run-datadog.sh...")
     _patch_run_datadog_script(_get_agent_dir(build_path))
+
+    logging.debug("Patching create_logs_config.rb ...")
+    _patch_create_logs_config_script(_get_agent_dir(build_path))
 
 
 def run(model_version, runtime_version):
@@ -581,7 +602,7 @@ def run(model_version, runtime_version):
         return
 
     logging.debug("Setting Datadog Agent script permissions if required...")
-    util.set_executable(f"{_get_agent_dir()}/*.sh")
+    util.set_executable(f"{_get_agent_dir()}/scripts/*.sh")
 
     # Start the run script "borrowed" from the official DD buildpack
     # and include settings as environment variables
