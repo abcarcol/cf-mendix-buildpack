@@ -12,6 +12,7 @@
 import json
 import logging
 import os
+import shutil
 import socket
 import subprocess
 from collections import OrderedDict
@@ -30,13 +31,21 @@ TRACE_AGENT_DEPENDENCY = f"{NAMESPACE}.trace-agent"
 ROOT_DIR = os.path.abspath(".local")
 SIDECAR_ROOT_DIR = os.path.join(ROOT_DIR, NAMESPACE)
 AGENT_USER_CHECKS_DIR = os.path.abspath("/home/vcap/app/datadog_integrations")
-
+DOT_DATADOG_PATH = os.path.abspath("/home/vcap/app/.datadog")
 STATSD_PORT = 8125
 LOGS_PORT = 9032
 
 
 def _get_agent_dir(root=ROOT_DIR):
-    return os.path.join(root, NAMESPACE, "lib")
+    # DD-CF-buildpack assumes the root DATADOG_DIR to be
+    # /home/vcap/app/.datadog
+    # So once we've downloaded and installed the binaries
+    # return the path with ".datadog/"
+    path_with_lib = os.path.join(root, NAMESPACE, "lib")
+    if os.path.exists(path_with_lib):
+        return os.path.join(root, NAMESPACE, "lib")
+    else:
+        return DOT_DATADOG_PATH
 
 
 def _get_user_checks_dir():
@@ -573,6 +582,23 @@ def _patch_create_logs_config_script(script_dir):
         file_handler.truncate()
 
 
+def _prep_datadog_dir(datadog_install_path):
+    # Tries to replicate what the datadog-cloudfoundry-buildpack
+    # supply script does before running the datadog startup script.
+    # The DD buildpack assumes /home/vcap/app/.datadog to be the default
+    # directory for all configs and binaries though it provides DATADOG_DIR
+    # as an environment variable. So here we try to move all files under lib/
+    # to /home/vcap/app/.datadog/
+    shutil.copytree(
+        datadog_install_path,
+        DOT_DATADOG_PATH,
+        copy_function=shutil.move,
+        dirs_exist_ok=True,
+    )
+    # finally cleanup up the lib/ dir
+    shutil.rmtree(datadog_install_path)
+
+
 def stage(buildpack_path, build_path, cache_path):
     if not is_enabled():
         return
@@ -600,6 +626,9 @@ def run(model_version, runtime_version):
             "Please push or restage your app to complete Datadog installation."
         )
         return
+
+    logging.debug("Prep DATADOG_DIR ... %s", _get_agent_dir())
+    _prep_datadog_dir(_get_agent_dir())
 
     logging.debug("Setting Datadog Agent script permissions if required...")
     util.set_executable(f"{_get_agent_dir()}/scripts/*.sh")
