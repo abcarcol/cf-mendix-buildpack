@@ -64,6 +64,7 @@ def build_from_source(
     args.append(util.get_mpr_file_from_dir(build_path))
 
     try:
+        os.chmod("/tmp/opt/mono-5.20.1.27/bin/mono", 0o0777)
         subprocess.check_call(args, env=mono_env)
     except subprocess.CalledProcessError as ex:
         _log_buildstatus_errors(BUILD_ERRORS_JSON)
