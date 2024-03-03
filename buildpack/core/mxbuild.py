@@ -65,6 +65,7 @@ def build_from_source(
 
     try:
         print(os.getcwd())
+        
         import glob
         os.chmod(glob.glob('**/mono-*', recursive=True)[0], 0o0755)
         subprocess.check_call(args, env=mono_env)
